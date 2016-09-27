@@ -2,12 +2,16 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import random
 
+from qlearn import QLearner
+
+
 class QLearnSolver:
-    def __init__(self, num_nodes, start, goal):
+    def __init__(self, num_nodes, start, goal, qlearner):
         self.num_nodes = num_nodes
         self.start = start
         self.goal = goal
         self.graph = nx.DiGraph()
+        self.qlearner = qlearner
 
         assert 0 <= start <= num_nodes - 1
         assert 0 <= goal <= num_nodes - 1
@@ -41,12 +45,22 @@ class QLearnSolver:
     def get_reward_matrix(self):
         return self.reward
 
+    def get_model_size(self):
+        return self.num_nodes - 1
+
+    def execute_training(self):
+        while self.qlearner.current_state != self.qlearner.goal:
+            # From the current state figure out what are the possible next actions and select a random one
+            actions = []
+
+            self.qlearner.execute_step()
+
     def render(self):
         nodes = [i for i in range(0, self.num_nodes)]
         nodes.remove(self.start)
         nodes.remove(self.goal)
 
-        pos = nx.spring_layout(self.graph)
+        pos = nx.shell_layout(self.graph)
         nx.draw_networkx_nodes(self.graph, pos,
                                nodelist=nodes,
                                node_color='r',
@@ -75,8 +89,17 @@ class QLearnSolver:
         plt.show()
 
 def main():
-    qlearnsolver = QLearnSolver(10, 3, 8)
-    qlearnsolver.render()
+    num_iterations = 100
+    model_size = 10
+    qlearner = QLearner(model_size)
+    for i in range(0, num_iterations):
+        start = random.randint(0, model_size - 1)
+        goal = start
+        while goal == start:
+            goal = random.randint(0, model_size - 1)
+
+        qlearnsolver = QLearnSolver(model_size, start, goal, qlearner)
+        qlearnsolver.render()
 
 if __name__ == "__main__":
     main()
