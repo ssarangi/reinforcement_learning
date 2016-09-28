@@ -7,7 +7,7 @@ import random
 
 
 class FlappyBird:
-    def __init__(self):
+    def __init__(self, debug=True):
         self.screen = pygame.display.set_mode((400, 708))
         self.bird = pygame.Rect(65, 50, 50, 50)
         self.background = pygame.image.load("assets/background.png").convert()
@@ -27,6 +27,7 @@ class FlappyBird:
         self.counter = 0
         self.offset = random.randint(-110, 110)
         self.q = {}
+        self.debug=True
 
     def updateWalls(self):
         self.wallx -= 2
@@ -52,6 +53,7 @@ class FlappyBird:
                                0 - self.gap - self.offset - 10,
                                self.wallDown.get_width() - 10,
                                self.wallDown.get_height())
+
         if upRect.colliderect(self.bird):
             self.dead = True
         if downRect.colliderect(self.bird):
@@ -64,6 +66,18 @@ class FlappyBird:
             self.wallx = 400
             self.offset = random.randint(-110, 110)
             self.gravity = 5
+
+        if self.debug:
+            border_color = (255, 0, 0)
+            blue_color = (0, 0, 255)
+            pygame.draw.lines(self.screen, border_color, False, [(self.bird[0] + self.bird[2], self.bird[1] + self.bird[3]),
+                                                                 (self.wallx, self.bird[1] + self.bird[3])], 2)
+            pygame.draw.lines(self.screen, border_color, False, [(self.bird[0] + self.bird[2], self.bird[1] + self.bird[3]), (
+            self.bird[0] + self.bird[2], 360 + self.gap - self.offset + 10)], 2)
+            pygame.draw.rect(self.screen, blue_color, self.bird, 2)
+            pygame.draw.rect(self.screen, border_color, upRect, 2)
+            pygame.draw.rect(self.screen, border_color, downRect, 2)
+            self.screen.blit(self.birdSprites[self.sprite], (70, self.birdY))
 
     def run(self):
         clock = pygame.time.Clock()
@@ -93,7 +107,6 @@ class FlappyBird:
                 self.sprite = 2
             elif self.jump:
                 self.sprite = 1
-            self.screen.blit(self.birdSprites[self.sprite], (70, self.birdY))
             if not self.dead:
                 self.sprite = 0
             self.updateWalls()
