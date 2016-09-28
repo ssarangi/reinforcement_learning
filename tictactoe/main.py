@@ -111,6 +111,7 @@ class Game(QMainWindow, Ui_tictactoe):
         self.playerX, self.playerO = playerX, playerO
         self.current_player = random.choice([self.playerX, self.playerO])
         self.game_state = GameState.PLAYING
+        self.winner = None
 
         self.setupUi(self)
 
@@ -191,6 +192,16 @@ class Game(QMainWindow, Ui_tictactoe):
                 self.execute_move(move, self.current_player.get_player_identifier())
 
                 if self.game_state == GameState.ENDED:
+                    # Check who won the game
+                    if self.winner == self.playerX:
+                        self.playerX.reward(10, self.board)
+                        self.playerO.reward(-10, self.board)
+                    elif self.winner == self.playerO:
+                        self.playerO.reward(10, self.board)
+                        self.playerX.reward(-10, self.board)
+                    else:
+                        self.playerX.reward(5, self.board)
+                        self.playerO.reward(5, self.board)
                     return
                 else:
                     self.switch_player()
@@ -203,6 +214,7 @@ class Game(QMainWindow, Ui_tictactoe):
 
         games_played = 0
         while games_played < num_games:
+            print("Autoplaying: %s" % games_played)
             self.play()
             self.new_game()
             games_played += 1
@@ -222,6 +234,7 @@ class Game(QMainWindow, Ui_tictactoe):
         self.frame.setEnabled(True)
         self.board = [0] * 9
         self.game_state = GameState.PLAYING
+        self.winner = None
 
         for button in self.allButtons[:]:
             button.setText("")
@@ -264,8 +277,10 @@ class Game(QMainWindow, Ui_tictactoe):
     def end_game(self, player):
         """Ends the game"""
 
+        self.winner = player
         if player is None:
-            Dialog(self, 3).show()
+            if self.interactive:
+                Dialog(self, 3).show()
 
             for button in self.allButtons:
                 button.setEnabled(False)
@@ -283,8 +298,9 @@ class Game(QMainWindow, Ui_tictactoe):
             return True
 
         elif player.type == PlayerType.PLAYER_O:
-            self.sounds["lose"].play()
-            Dialog(self, 2).show()
+            if self.interactive:
+                self.sounds["lose"].play()
+                Dialog(self, 2).show()
 
             for button in self.allButtons:
                 button.setEnabled(False)
@@ -325,23 +341,6 @@ class Game(QMainWindow, Ui_tictactoe):
         if self.check():
             return
 
-    # def com_play(self):
-    #     # Find the empty positions
-    #     available_pos = [idx for idx in range(0, 9) if self.board[idx] == 0]
-    #     try:
-    #         random_button = random.choice(available_pos)
-    #     except:  # The available button list is empty
-    #         self.end_game(3)
-    #         return
-    #
-    #     self.update_button(random_button, PlayerType.PLAYER_O)
-    #
-    #     if self.check():
-    #         return
-    #     self.frame.setEnabled(True)
-    #     self.switch_player()
-    #     self.show()
-
     def dark_theme(self):
         """Changes the theme between dark and normal"""
         if self.actionDark_Theme.isChecked():
@@ -369,11 +368,18 @@ class Game(QMainWindow, Ui_tictactoe):
 
 
 app = QApplication(sys.argv)
-playerX = QLearningPlayer(PlayerType.PLAYER_X)
-playerO = QLearningPlayer(PlayerType.PLAYER_O)
-game = Game(playerX, playerO)
-game.show()
-# game.autoplay()
-playerX.human = True
-game.play()
-app.exec_()
+
+def main():
+    playerX = QLearningPlayer(PlayerType.PLAYER_X)
+    playerO = QLearningPlayer(PlayerType.PLAYER_O)
+    game = Game(playerX, playerO)
+    game.show()
+    game.interactive = False
+    game.autoplay(1000000)
+    game.interactive = True
+    playerX.human = True
+    game.play()
+    app.exec_()
+
+if __name__ == "__main__":
+    main()
