@@ -26,6 +26,7 @@ class FlappyBird:
         self.sprite = 0
         self.counter = 0
         self.offset = random.randint(-110, 110)
+        self.q = {}
 
     def updateWalls(self):
         self.wallx -= 2
