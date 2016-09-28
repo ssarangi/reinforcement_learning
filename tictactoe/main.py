@@ -17,23 +17,103 @@
 import os
 import random
 import sys
+from enum import Enum
 
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
 from PyQt5.QtWidgets import *
 from PyQt5.QtMultimedia import QSound
+from PyQt5 import QtWidgets
 
 from Dialog import *
 from tictactoe_ui import Ui_tictactoe
 
+class PlayerType(Enum):
+    PLAYER_X = 0
+    PLAYER_O = 1
+
+class GameState(Enum):
+    PLAYING = 0
+    ENDED = 1
+
+class QLearningPlayer:
+    def __init__(self, player_type, epsilon=0.2, alpha=0.3, gamma=0.9):
+        self.q = {}
+        self.epsilon = epsilon
+        self.alpha = alpha
+        self.gamma = gamma
+        self.type = player_type
+        self.human = False
+
+    def reset(self):
+        self.last_board = [0] * 9
+        self.last_move = None
+
+    def getQ(self, state, action):
+        if self.q.get((state, action)) is None:
+            self.q[(state, action)] = 1.0
+
+        return self.q.get((state, action))
+
+    def reward(self, value, board):
+        if self.last_move:
+            self.learn(self.last_board, self.last_move, value, tuple(board))
+
+    def learn(self, state, action, reward, result_state):
+        prev = self.getQ(state, action)
+        maxqnew = max([self.getQ(result_state, a) for a in self.available_moves(state)])
+        self.q[(state, action)] = prev + self.alpha * ((reward + self.gamma * maxqnew) - prev)
+
+    def available_moves(self, board):
+        return [i for i in range(0, 9) if board[i] == 0]
+
+    def get_player_identifier(self):
+        if self.type == PlayerType.PLAYER_X:
+            return 1
+        else:
+            return 2
+
+    def move(self, board):
+        self.last_board = tuple(board)
+        actions = self.available_moves(board)
+
+        if random.random() < self.epsilon:
+            self.last_move = random.choice(actions)
+            return self.last_move
+
+        qs = [self.getQ(self.last_board, a) for a in actions]
+        maxQ = max(qs)
+
+        if qs.count(maxQ) > 1:
+            # More than 1 best option; choose among them wisely
+            best_options = [i for i in range(len(actions)) if qs[i] == maxQ]
+            i = random.choice(best_options)
+        else:
+            i = qs.index(maxQ)
+
+        self.last_move = actions[i]
+        return actions[i]
+
+    def __str__(self):
+        if self.type == PlayerType.PLAYER_X:
+            return "Player X"
+        else:
+            return "Player O"
+
+    __repr__ = __str__
+
 
 class Game(QMainWindow, Ui_tictactoe):
-
-    def __init__(self, parent=None):
+    def __init__(self, playerX, playerO, interactive=True, parent=None):
+        self.interactive = interactive
         super().__init__(parent)
+        self.board = [0] * 9
+        self.playerX, self.playerO = playerX, playerO
+        self.current_player = random.choice([self.playerX, self.playerO])
+        self.game_state = GameState.PLAYING
+
         self.setupUi(self)
 
-        self.turn = None
         self.timer = QTimer()
 
         # Shows only the close button
@@ -55,40 +135,34 @@ class Game(QMainWindow, Ui_tictactoe):
         self.oIcon.addPixmap(QPixmap(oIconPath), QIcon.Disabled)
 
         self.allButtons = self.frame.findChildren(QToolButton)
-        self.availabeButtons = self.allButtons[:]
         self.defaultPalette = QApplication.palette()
 
+        self.board_to_button_mapping = [self.button1, self.button2, self.button3, self.button4, self.button5,
+                                        self.button6, self.button7, self.button8, self.button9]
+
         # across the top
-        self.buttonGroup1 = [
-            self.button1, self.button2, self.button3]
+        self.winCombo1 = [0, 1, 2]
 
         # across the middle
-        self.buttonGroup2 = [
-            self.button4, self.button5, self.button6]
+        self.winCombo2 = [3, 4, 5]
 
         # across the bottom
-        self.buttonGroup3 = [
-            self.button7, self.button8, self.button9]
+        self.winCombo3 = [6, 7, 8]
 
         # down the left side
-        self.buttonGroup4 = [
-            self.button1, self.button4, self.button7]
+        self.winCombo4 = [0, 3, 6]
 
         # down the middle
-        self.buttonGroup5 = [
-            self.button2, self.button5, self.button8]
+        self.winCombo5 = [1, 4, 7]
 
         # down the right side
-        self.buttonGroup6 = [
-            self.button3, self.button6, self.button9]
+        self.winCombo6 = [2, 5, 8]
 
         # diagonal
-        self.buttonGroup7 = [
-            self.button1, self.button5, self.button9]
+        self.winCombo7 = [0, 4, 8]
 
         # diagonal
-        self.buttonGroup8 = [
-            self.button3, self.button5, self.button7]
+        self.winCombo8 = [2, 4, 6]
 
         # connections
         for button in self.allButtons:
@@ -101,115 +175,172 @@ class Game(QMainWindow, Ui_tictactoe):
         self.setFocus()  # sets the focus to the main window
         self.new_game()  # starts a new game
 
+    def is_board_full(self):
+        return 0 not in self.board
+
+    def switch_player(self):
+        if self.current_player.type == PlayerType.PLAYER_X:
+            self.current_player = self.playerO
+        else:
+            self.current_player = self.playerX
+
+    def play(self):
+        while not self.is_board_full():
+            if self.current_player.human is False:
+                move = self.current_player.move(self.board)
+                self.execute_move(move, self.current_player.get_player_identifier())
+
+                if self.game_state == GameState.ENDED:
+                    return
+                else:
+                    self.switch_player()
+            else:
+                return
+
+    def autoplay(self, num_games=10):
+        assert self.playerX is not None
+        assert self.playerO is not None
+
+        games_played = 0
+        while games_played < num_games:
+            self.play()
+            self.new_game()
+            games_played += 1
+
+    def execute_move(self, pos, value):
+        self.board[pos] = value
+        button = self.board_to_button_mapping[pos]
+        self.button_clicked(button)
+
     def new_game(self):
         self.reset()
-        self.turn = 1
 
     def reset(self):
-        self.turn = None
+        self.playerX.reset()
+        self.playerO.reset()
+        self.current_player = random.choice([self.playerX, self.playerO])
         self.frame.setEnabled(True)
-        self.availabeButtons = self.allButtons[:]
+        self.board = [0] * 9
+        self.game_state = GameState.PLAYING
 
-        for button in self.availabeButtons:
+        for button in self.allButtons[:]:
             button.setText("")
             button.setIcon(QIcon())
             button.setEnabled(True)
 
     def check(self):
-        if self.check_list(self.buttonGroup1):
-            return self.end_game(self.turn)
+        if self.check_list(self.winCombo1):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup2):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo2):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup3):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo3):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup4):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo4):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup5):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo5):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup6):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo6):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup7):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo7):
+            return self.end_game(self.current_player)
 
-        elif self.check_list(self.buttonGroup8):
-            return self.end_game(self.turn)
+        elif self.check_list(self.winCombo8):
+            return self.end_game(self.current_player)
+        elif self.is_board_full():
+            return self.end_game(None)
 
     def check_list(self, lst):
         for member in lst:
-            if member.text() != str(self.turn):
+            if self.board[member] != self.current_player.get_player_identifier():
                 return False
         return True
 
-    def end_game(self, state):
+    def end_game(self, player):
         """Ends the game"""
 
-        if state == 1:
-            self.sounds["win"].play()
-            Dialog(self, state).show()
-
-            for button in self.availabeButtons:
-                button.setEnabled(False)
-            self.availabeButtons.clear()
-            return True
-
-        elif state == 2:
-            self.sounds["lose"].play()
-            Dialog(self, state).show()
-
-            for button in self.availabeButtons:
-                button.setEnabled(False)
-            self.availabeButtons.clear()
-            return True
-
-        elif state == 3:
-            Dialog(self, state).show()
+        if player is None:
+            Dialog(self, 3).show()
 
             for button in self.allButtons:
                 button.setEnabled(False)
+            self.game_state = GameState.ENDED
             return True
+
+        elif player.type == PlayerType.PLAYER_X:
+            if self.interactive:
+                self.sounds["win"].play()
+                Dialog(self, 1).show()
+
+            for button in self.allButtons:
+                button.setEnabled(False)
+            self.game_state = GameState.ENDED
+            return True
+
+        elif player.type == PlayerType.PLAYER_O:
+            self.sounds["lose"].play()
+            Dialog(self, 2).show()
+
+            for button in self.allButtons:
+                button.setEnabled(False)
+            self.game_state = GameState.ENDED
+            return True
+
         return False
 
-    def button_clicked(self):
-        button = self.sender()
+    def update_button(self, button, player_type):
+        if player_type == PlayerType.PLAYER_X:
+            if self.interactive:
+                self.sounds["cross"].play()
+            button.setText("1")
+            button.setIcon(self.xIcon)
+        else:
+            if self.interactive:
+                self.sounds["circle"].play()
+            button.setText("2")
+            button.setIcon(self.oIcon)
 
-        self.sounds["cross"].play()
-
-        button.setText("1")
-        button.setIcon(self.xIcon)
         button.setEnabled(False)
-        self.availabeButtons.remove(button)
+
+    def button_clicked(self, button=None):
+        if button is None or type(button) != QtWidgets.QToolButton:
+            button = self.sender()
+
+            # In this case manually figure out which button this maps to
+            for move, b in enumerate(self.board_to_button_mapping):
+                if b == button:
+                    self.execute_move(move, self.current_player.get_player_identifier())
+                    if self.game_state == GameState.PLAYING:
+                        self.switch_player()
+                        self.play()
+                    return
+
+        self.update_button(button, self.current_player.type)
 
         if self.check():
             return
 
-        self.turn = 2
-        self.frame.setEnabled(False)
-
-        self.timer.singleShot(400, self.com_play)
-
-    def com_play(self):
-        try:
-            random_button = random.choice(self.availabeButtons)
-        except:  # The available button list is empty
-            self.end_game(3)
-            return
-
-        self.sounds["circle"].play()
-        random_button.setText("2")
-        random_button.setIcon(self.oIcon)
-        random_button.setEnabled(False)
-        self.availabeButtons.remove(random_button)
-
-        if self.check():
-            return
-        self.frame.setEnabled(True)
-        self.turn = 1
+    # def com_play(self):
+    #     # Find the empty positions
+    #     available_pos = [idx for idx in range(0, 9) if self.board[idx] == 0]
+    #     try:
+    #         random_button = random.choice(available_pos)
+    #     except:  # The available button list is empty
+    #         self.end_game(3)
+    #         return
+    #
+    #     self.update_button(random_button, PlayerType.PLAYER_O)
+    #
+    #     if self.check():
+    #         return
+    #     self.frame.setEnabled(True)
+    #     self.switch_player()
+    #     self.show()
 
     def dark_theme(self):
         """Changes the theme between dark and normal"""
@@ -238,6 +369,11 @@ class Game(QMainWindow, Ui_tictactoe):
 
 
 app = QApplication(sys.argv)
-game = Game()
+playerX = QLearningPlayer(PlayerType.PLAYER_X)
+playerO = QLearningPlayer(PlayerType.PLAYER_O)
+game = Game(playerX, playerO)
 game.show()
+# game.autoplay()
+playerX.human = True
+game.play()
 app.exec_()
