@@ -7,7 +7,7 @@ import random
 
 
 class FlappyBird:
-    def __init__(self, debug=True):
+    def __init__(self, alpha=0.3, gamma=0.9, debug=True):
         self.screen = pygame.display.set_mode((400, 708))
         self.bird = pygame.Rect(65, 50, 50, 50)
         self.background = pygame.image.load("assets/background.png").convert()
@@ -28,6 +28,8 @@ class FlappyBird:
         self.offset = random.randint(-110, 110)
         self.q = {}
         self.debug=True
+        self.alpha = alpha
+        self.gamma = gamma
 
     def updateWalls(self):
         self.wallx -= 2
@@ -70,10 +72,25 @@ class FlappyBird:
         if self.debug:
             border_color = (255, 0, 0)
             blue_color = (0, 0, 255)
+
+            # Draw the horizontal line
             pygame.draw.lines(self.screen, border_color, False, [(self.bird[0] + self.bird[2], self.bird[1] + self.bird[3]),
                                                                  (self.wallx, self.bird[1] + self.bird[3])], 2)
-            pygame.draw.lines(self.screen, border_color, False, [(self.bird[0] + self.bird[2], self.bird[1] + self.bird[3]), (
-            self.bird[0] + self.bird[2], 360 + self.gap - self.offset + 10)], 2)
+
+            # Draw the vertical line
+            pygame.draw.lines(self.screen, border_color, False, [(self.bird[0] + self.bird[2], self.bird[1] + self.bird[3]),
+                                                                 (self.bird[0] + self.bird[2], 360 + self.gap - self.offset + 10)], 2)
+
+            horizontal_dist = self.wallx - (self.bird[0] + self.bird[2])
+            vertical_dist   = (360 + self.gap - self.offset + 10) - (self.bird[1] + self.bird[3])
+
+            # Q[s,a] ← Q[s,a] + α (r + γ * V(s') - Q[s,a])
+            current_state = (horizontal_dist, vertical_dist, self.dead)
+            reward = 1 if self.dead == False else -1000
+
+            original = self.q.get(current_state, 1.0)
+            self.q[current_state] = original + alpha * ()
+
             pygame.draw.rect(self.screen, blue_color, self.bird, 2)
             pygame.draw.rect(self.screen, border_color, upRect, 2)
             pygame.draw.rect(self.screen, border_color, downRect, 2)
